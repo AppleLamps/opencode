@@ -1,4 +1,4 @@
-import { Component, Show, createMemo, createResource, onMount, type JSX } from "solid-js"
+import { Component, For, Show, createMemo, createResource, onMount, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -28,6 +28,7 @@ import {
 } from "@/context/settings"
 import { decode64 } from "@/utils/base64"
 import { playSoundById, SOUND_OPTIONS } from "@/utils/sound"
+import { filterSettingsSections, type SettingsSection } from "@/utils/settings-filter"
 import { Link } from "./link"
 import { SettingsList } from "./settings-list"
 
@@ -91,6 +92,7 @@ export const SettingsGeneral: Component = () => {
 
   const [store, setStore] = createStore({
     checking: false,
+    filter: "",
   })
 
   const linux = createMemo(() => platform.platform === "desktop" && platform.os === "linux")
@@ -289,7 +291,7 @@ export const SettingsGeneral: Component = () => {
   })
 
   const GeneralSection = () => (
-    <div class="flex flex-col gap-1">
+    <div id="settings-section-general" class="flex flex-col gap-1">
       <SettingsList>
         <SettingsRow
           title={language.t("settings.general.row.language.title")}
@@ -391,7 +393,7 @@ export const SettingsGeneral: Component = () => {
   )
 
   const AdvancedSection = () => (
-    <div class="flex flex-col gap-1">
+    <div id="settings-section-advanced" class="flex flex-col gap-1">
       <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.advanced")}</h3>
 
       <SettingsList>
@@ -459,7 +461,7 @@ export const SettingsGeneral: Component = () => {
   )
 
   const AppearanceSection = () => (
-    <div class="flex flex-col gap-1">
+    <div id="settings-section-appearance" class="flex flex-col gap-1">
       <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.appearance")}</h3>
 
       <SettingsList>
@@ -589,7 +591,7 @@ export const SettingsGeneral: Component = () => {
   )
 
   const NotificationsSection = () => (
-    <div class="flex flex-col gap-1">
+    <div id="settings-section-notifications" class="flex flex-col gap-1">
       <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.notifications")}</h3>
 
       <SettingsList>
@@ -633,7 +635,7 @@ export const SettingsGeneral: Component = () => {
   )
 
   const SoundsSection = () => (
-    <div class="flex flex-col gap-1">
+    <div id="settings-section-sounds" class="flex flex-col gap-1">
       <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.sounds")}</h3>
 
       <SettingsList>
@@ -686,7 +688,7 @@ export const SettingsGeneral: Component = () => {
   )
 
   const UpdatesSection = () => (
-    <div class="flex flex-col gap-1">
+    <div id="settings-section-updates" class="flex flex-col gap-1">
       <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.updates")}</h3>
 
       <SettingsList>
@@ -729,55 +731,168 @@ export const SettingsGeneral: Component = () => {
     </div>
   )
 
-  console.log(import.meta.env)
+  const DisplaySection = () => (
+    <div id="settings-section-display" class="flex flex-col gap-1">
+      <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.display")}</h3>
+
+      <SettingsList>
+        <SettingsRow
+          title={
+            <div class="flex items-center gap-2">
+              <span>{language.t("settings.general.row.wayland.title")}</span>
+              <Tooltip value={language.t("settings.general.row.wayland.tooltip")} placement="top">
+                <span class="text-text-weak">
+                  <Icon name="help" size="small" />
+                </span>
+              </Tooltip>
+            </div>
+          }
+          description={language.t("settings.general.row.wayland.description")}
+        >
+          <div data-action="settings-wayland">
+            <Switch checked={displayBackend.latest === "wayland"} onChange={onDisplayBackendChange} />
+          </div>
+        </SettingsRow>
+      </SettingsList>
+    </div>
+  )
+
+  const sectionDefs = createMemo<(SettingsSection & { available: boolean; render: () => JSX.Element })[]>(() => [
+    {
+      id: "general",
+      label: language.t("settings.tab.general"),
+      terms: ["language", "permissions", "shell", "reasoning", "progress"],
+      available: true,
+      render: GeneralSection,
+    },
+    {
+      id: "appearance",
+      label: language.t("settings.general.section.appearance"),
+      terms: ["theme", "font", "color"],
+      available: true,
+      render: AppearanceSection,
+    },
+    {
+      id: "notifications",
+      label: language.t("settings.general.section.notifications"),
+      terms: ["agent", "permissions", "errors"],
+      available: true,
+      render: NotificationsSection,
+    },
+    {
+      id: "sounds",
+      label: language.t("settings.general.section.sounds"),
+      terms: ["sound", "agent", "permissions", "errors"],
+      available: true,
+      render: SoundsSection,
+    },
+    {
+      id: "updates",
+      label: language.t("settings.general.section.updates"),
+      terms: ["release", "startup", "check"],
+      available: true,
+      render: UpdatesSection,
+    },
+    {
+      id: "display",
+      label: language.t("settings.general.section.display"),
+      terms: ["wayland", "linux"],
+      available: linux(),
+      render: DisplaySection,
+    },
+    {
+      id: "advanced",
+      label: language.t("settings.general.section.advanced"),
+      terms: ["file tree", "navigation", "command palette", "terminal", "status"],
+      available: desktop() && import.meta.env.VITE_OPENCODE_CHANNEL === "beta",
+      render: AdvancedSection,
+    },
+  ])
+
+  const visibleSections = createMemo(() =>
+    filterSettingsSections(
+      sectionDefs().filter((section) => section.available),
+      store.filter,
+    ),
+  )
+
+  const showSection = (id: string) => visibleSections().some((section) => section.id === id)
+
+  const scrollToSection = (id: string) => {
+    document.getElementById(`settings-section-${id}`)?.scrollIntoView({ block: "start" })
+  }
+
   return (
-    <div class="flex flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
-      <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
-        <div class="flex flex-col gap-1 pt-6 pb-8">
-          <h2 class="text-16-medium text-text-strong">{language.t("settings.tab.general")}</h2>
+    <div class="flex h-full min-h-0 overflow-hidden">
+      <div class="hidden w-40 shrink-0 border-r border-border-weaker-base px-3 py-6 md:block">
+        <div class="sticky top-6 flex flex-col gap-1">
+          <For each={sectionDefs().filter((section) => section.available)}>
+            {(section) => (
+              <button
+                type="button"
+                class="rounded-md px-2 py-1.5 text-left text-12-regular text-text-weak hover:bg-surface-base-hover hover:text-text-base"
+                onClick={() => scrollToSection(section.id)}
+              >
+                {section.label}
+              </button>
+            )}
+          </For>
         </div>
       </div>
-
-      <div class="flex flex-col gap-8 w-full">
-        <GeneralSection />
-
-        <AppearanceSection />
-
-        <NotificationsSection />
-
-        <SoundsSection />
-
-        <UpdatesSection />
-
-        <Show when={linux()}>
-          <div class="flex flex-col gap-1">
-            <h3 class="text-14-medium text-text-strong pb-2">{language.t("settings.general.section.display")}</h3>
-
-            <SettingsList>
-              <SettingsRow
-                title={
-                  <div class="flex items-center gap-2">
-                    <span>{language.t("settings.general.row.wayland.title")}</span>
-                    <Tooltip value={language.t("settings.general.row.wayland.tooltip")} placement="top">
-                      <span class="text-text-weak">
-                        <Icon name="help" size="small" />
-                      </span>
-                    </Tooltip>
-                  </div>
-                }
-                description={language.t("settings.general.row.wayland.description")}
-              >
-                <div data-action="settings-wayland">
-                  <Switch checked={displayBackend.latest === "wayland"} onChange={onDisplayBackendChange} />
-                </div>
-              </SettingsRow>
-            </SettingsList>
+      <div class="flex flex-1 flex-col h-full overflow-y-auto no-scrollbar px-4 pb-10 sm:px-10 sm:pb-10">
+        <div class="sticky top-0 z-10 bg-[linear-gradient(to_bottom,var(--surface-stronger-non-alpha)_calc(100%_-_24px),transparent)]">
+          <div class="flex flex-col gap-4 pt-6 pb-6 max-w-[760px]">
+            <h2 class="text-16-medium text-text-strong">{language.t("settings.tab.general")}</h2>
+            <div class="flex items-center gap-2 rounded-lg bg-surface-base px-3 h-9">
+              <Icon name="magnifying-glass" class="text-icon-weak-base flex-shrink-0" />
+              <TextField
+                variant="ghost"
+                type="text"
+                value={store.filter}
+                onChange={(value) => setStore("filter", value)}
+                placeholder={language.t("settings.search.placeholder")}
+                spellcheck={false}
+                autocorrect="off"
+                autocomplete="off"
+                autocapitalize="off"
+                class="flex-1"
+              />
+            </div>
           </div>
-        </Show>
+        </div>
 
-        <Show when={desktop() && import.meta.env.VITE_OPENCODE_CHANNEL === "beta"}>
-          <AdvancedSection />
-        </Show>
+        <div class="flex flex-col gap-8 w-full max-w-[760px]">
+          <Show when={showSection("general")}>
+            <GeneralSection />
+          </Show>
+
+          <Show when={showSection("appearance")}>
+            <AppearanceSection />
+          </Show>
+
+          <Show when={showSection("notifications")}>
+            <NotificationsSection />
+          </Show>
+
+          <Show when={showSection("sounds")}>
+            <SoundsSection />
+          </Show>
+
+          <Show when={showSection("updates")}>
+            <UpdatesSection />
+          </Show>
+
+          <Show when={showSection("display")}>
+            <DisplaySection />
+          </Show>
+
+          <Show when={showSection("advanced")}>
+            <AdvancedSection />
+          </Show>
+          <Show when={visibleSections().length === 0}>
+            <div class="py-12 text-center text-14-regular text-text-weak">{language.t("settings.search.empty")}</div>
+          </Show>
+        </div>
       </div>
     </div>
   )

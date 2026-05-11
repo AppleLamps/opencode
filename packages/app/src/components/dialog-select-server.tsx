@@ -16,6 +16,7 @@ import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
 import { normalizeServerUrl, ServerConnection, useServer } from "@/context/server"
 import { type ServerHealth, useCheckServerHealth } from "@/utils/server-health"
+import { serverPreviewLabel, serverPreviewTone, type ServerPreviewState } from "@/utils/server-preview-state"
 
 const DEFAULT_USERNAME = "opencode"
 
@@ -27,7 +28,7 @@ interface ServerFormProps {
   placeholder: string
   busy: boolean
   error: string
-  status: boolean | undefined
+  status: ServerPreviewState
   onChange: (value: string) => void
   onNameChange: (value: string) => void
   onUsernameChange: (value: string) => void
@@ -90,17 +91,18 @@ function useServerPreview() {
     value: string,
     username: string,
     password: string,
-    setStatus: (value: boolean | undefined) => void,
+    setStatus: (value: ServerPreviewState) => void,
   ) => {
-    setStatus(undefined)
+    setStatus("idle")
     if (!looksComplete(value)) return
     const normalized = normalizeServerUrl(value)
     if (!normalized) return
+    setStatus("checking")
     const http: ServerConnection.HttpBase = { url: normalized }
     if (username) http.username = username
     if (password) http.password = password
     const result = await checkServerHealth(http)
-    setStatus(result.healthy)
+    setStatus(result.healthy ? "reachable" : "failed")
   }
 
   return { previewStatus }
@@ -108,6 +110,7 @@ function useServerPreview() {
 
 function ServerForm(props: ServerFormProps) {
   const language = useLanguage()
+  const tone = () => serverPreviewTone(props.status)
   const keyDown = (event: KeyboardEvent) => {
     event.stopPropagation()
     if (event.key === "Escape") {
@@ -136,6 +139,25 @@ function ServerForm(props: ServerFormProps) {
             onChange={props.onChange}
             onKeyDown={keyDown}
           />
+          <div
+            classList={{
+              "mt-2 flex items-center gap-2 text-12-regular": true,
+              "text-text-weak": tone() === "muted" || tone() === "pending",
+              "text-icon-success-base": tone() === "success",
+              "text-icon-critical-base": tone() === "critical",
+            }}
+          >
+            <div
+              classList={{
+                "size-2 rounded-full shrink-0": true,
+                "bg-border-weak-base": tone() === "muted",
+                "bg-icon-info-active": tone() === "pending",
+                "bg-icon-success-base": tone() === "success",
+                "bg-icon-critical-base": tone() === "critical",
+              }}
+            />
+            {serverPreviewLabel(props.status, (key) => language.t(key as Parameters<typeof language.t>[0]))}
+          </div>
         </div>
         <TextField
           type="text"
@@ -189,7 +211,7 @@ export function DialogSelectServer() {
       password: "",
       error: "",
       showForm: false,
-      status: undefined as boolean | undefined,
+      status: "idle" as ServerPreviewState,
     },
     editServer: {
       id: undefined as string | undefined,
@@ -198,7 +220,7 @@ export function DialogSelectServer() {
       username: "",
       password: "",
       error: "",
-      status: undefined as boolean | undefined,
+      status: "idle" as ServerPreviewState,
     },
   })
 
@@ -210,7 +232,7 @@ export function DialogSelectServer() {
       password: "",
       error: "",
       showForm: false,
-      status: undefined,
+      status: "idle",
     })
   }
   const resetEdit = () => {
@@ -221,7 +243,7 @@ export function DialogSelectServer() {
       username: "",
       password: "",
       error: "",
-      status: undefined,
+      status: "idle",
     })
   }
 
@@ -242,7 +264,7 @@ export function DialogSelectServer() {
       if (store.addServer.password && store.addServer.username) conn.http.username = store.addServer.username
       const result = await checkServerHealth(conn.http)
       if (!result.healthy) {
-        setStore("addServer", { error: language.t("dialog.server.add.error") })
+        setStore("addServer", { error: language.t("dialog.server.add.error"), status: "failed" })
         return
       }
 
@@ -281,7 +303,7 @@ export function DialogSelectServer() {
       }
       const result = await checkServerHealth(conn.http)
       if (!result.healthy) {
-        setStore("editServer", { error: language.t("dialog.server.add.error") })
+        setStore("editServer", { error: language.t("dialog.server.add.error"), status: "failed" })
         return
       }
       if (normalized === input.original.http.url) {
@@ -444,7 +466,7 @@ export function DialogSelectServer() {
       username: DEFAULT_USERNAME,
       password: "",
       error: "",
-      status: undefined,
+      status: "idle",
     })
   }
 
@@ -457,7 +479,7 @@ export function DialogSelectServer() {
       username: conn.http.username ?? "",
       password: conn.http.password ?? "",
       error: "",
-      status: store.status[ServerConnection.key(conn)]?.healthy,
+      status: store.status[ServerConnection.key(conn)]?.healthy ? "reachable" : "idle",
     })
   }
 
@@ -637,9 +659,11 @@ export function DialogSelectServer() {
             <Button variant="primary" size="large" onClick={submitForm} disabled={formBusy()} class="px-3 py-1.5">
               {formBusy()
                 ? language.t("dialog.server.add.checking")
-                : isAddMode()
-                  ? language.t("dialog.server.add.button")
-                  : language.t("common.save")}
+                : (isAddMode() ? store.addServer.status : store.editServer.status) === "idle"
+                  ? language.t("dialog.server.action.checkAndSave")
+                  : isAddMode()
+                    ? language.t("dialog.server.add.button")
+                    : language.t("common.save")}
             </Button>
           </Show>
         </div>

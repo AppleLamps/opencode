@@ -27,6 +27,7 @@ import { FileTabContent } from "@/pages/session/file-tabs"
 import { createOpenSessionFileTab, createSessionTabs, getTabReorderIndex, type Sizing } from "@/pages/session/helpers"
 import { setSessionHandoff } from "@/pages/session/handoff"
 import { useSessionLayout } from "@/pages/session/session-layout"
+import { diffSummary } from "@/utils/diff-summary"
 
 type RenderDiff = (SnapshotFileDiff & { file: string }) | VcsFileDiff
 
@@ -78,6 +79,7 @@ export function SessionSidePanel(props: {
 
   const diffs = createMemo(() => props.diffs().filter(renderDiff))
   const diffFiles = createMemo(() => diffs().map((d) => d.file))
+  const summary = createMemo(() => diffSummary(diffs()))
   const kinds = createMemo(() => {
     const merge = (a: "add" | "del" | "mix" | undefined, b: "add" | "del" | "mix") => {
       if (!a) return b
@@ -407,15 +409,37 @@ export function SessionSidePanel(props: {
                             </div>
                           }
                         >
-                          <FileTree
-                            path=""
-                            class="pt-3"
-                            allowed={diffFiles()}
-                            kinds={kinds()}
-                            draggable={false}
-                            active={props.activeDiff}
-                            onFileClick={(node) => props.focusReviewDiff(node.path)}
-                          />
+                          <div class="flex flex-col gap-3 pt-3">
+                            <div class="grid grid-cols-4 gap-1 rounded-md border border-border-weaker-base bg-background-base p-1">
+                              <For
+                                each={
+                                  [
+                                    ["session.review.summary.total", summary().total],
+                                    ["session.review.summary.added", summary().added],
+                                    ["session.review.summary.modified", summary().modified],
+                                    ["session.review.summary.deleted", summary().deleted],
+                                  ] as const
+                                }
+                              >
+                                {(item) => (
+                                  <div class="min-w-0 rounded-[4px] px-1.5 py-1 text-center">
+                                    <div class="text-12-medium text-text-strong">{item[1]}</div>
+                                    <div class="truncate text-11-regular text-text-weak">
+                                      {language.t(item[0] as Parameters<typeof language.t>[0])}
+                                    </div>
+                                  </div>
+                                )}
+                              </For>
+                            </div>
+                            <FileTree
+                              path=""
+                              allowed={diffFiles()}
+                              kinds={kinds()}
+                              draggable={false}
+                              active={props.activeDiff}
+                              onFileClick={(node) => props.focusReviewDiff(node.path)}
+                            />
+                          </div>
                         </Show>
                       </Match>
                     </Switch>
@@ -442,8 +466,8 @@ export function SessionSidePanel(props: {
                     direction="horizontal"
                     edge="start"
                     size={layout.fileTree.width()}
-                    min={200}
-                    max={480}
+                    min={240}
+                    max={560}
                     onResize={(width) => {
                       props.size.touch()
                       layout.fileTree.resize(width)

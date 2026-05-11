@@ -3,6 +3,7 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { createQuery, skipToken, useMutation, useQueryClient } from "@tanstack/solid-query"
 import {
   batch,
+  For,
   onCleanup,
   Show,
   Match,
@@ -31,6 +32,8 @@ import { showToast } from "@opencode-ai/ui/toast"
 import { checksum } from "@opencode-ai/core/util/encode"
 import { useSearchParams } from "@solidjs/router"
 import { NewSessionView, SessionHeader } from "@/components/session"
+import { SessionContextUsage } from "@/components/session-context-usage"
+import FileTree from "@/components/file-tree"
 import { useComments } from "@/context/comments"
 import { getSessionPrefetch, SESSION_PREFETCH_TTL } from "@/context/global-sync/session-prefetch"
 import { useGlobalSync } from "@/context/global-sync"
@@ -64,6 +67,7 @@ import { Persist, persisted } from "@/utils/persist"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { same } from "@/utils/same"
 import { formatServerError } from "@/utils/server-errors"
+import { DEFAULT_MOBILE_SESSION_TAB, MOBILE_SESSION_TABS, type MobileSessionTab } from "@/utils/mobile-session-tabs"
 
 const emptyUserMessages: UserMessage[] = []
 type FollowupItem = FollowupDraft & { id: string }
@@ -513,7 +517,7 @@ export default function Page() {
 
   const [store, setStore] = createStore({
     messageId: undefined as string | undefined,
-    mobileTab: "session" as "session" | "changes",
+    mobileTab: DEFAULT_MOBILE_SESSION_TAB as MobileSessionTab,
     changes: "git" as ChangeMode,
     newSessionWorktree: "main",
     deferRender: false,
@@ -586,7 +590,7 @@ export default function Page() {
   const wantsReview = createMemo(() =>
     isDesktop()
       ? desktopFileTreeOpen() || (desktopReviewOpen() && activeTab() === "review")
-      : store.mobileTab === "changes",
+      : store.mobileTab === "changes" || store.mobileTab === "files",
   )
   const vcsMode = createMemo<VcsMode | undefined>(() => {
     if (store.changes === "git" || store.changes === "branch") return store.changes
@@ -1620,6 +1624,104 @@ export default function Page() {
   const halt = (sessionID: string) =>
     busy(sessionID) ? sdk.client.session.abort({ sessionID }).catch(() => {}) : Promise.resolve()
 
+  const mobileNoFiles = createMemo(() => {
+    const state = file.tree.state("")
+    if (!state?.loaded) return false
+    return file.tree.children("").length === 0
+  })
+
+  const openMobileFile = (path: string) => {
+    const tab = file.tab(path)
+    void tabs().open(tab)
+    tabs().setActive(tab)
+    setStore("mobileTab", "chat")
+  }
+
+  const MobileEmpty = (props: { text: string; action?: () => void; label?: string }) => (
+    <div class="h-full pb-64 -mt-4 flex flex-col items-center justify-center text-center gap-4 px-6">
+      <div class="text-14-regular text-text-weak max-w-64">{props.text}</div>
+      <Show when={props.action && props.label}>
+        <Button size="large" onClick={props.action}>
+          {props.label}
+        </Button>
+      </Show>
+    </div>
+  )
+
+  const mobileFileContent = () => (
+    <div class="h-full overflow-y-auto bg-background-stronger px-3 py-3">
+      <Switch>
+        <Match when={mobileNoFiles()}>
+          <MobileEmpty text={language.t("session.files.empty")} />
+        </Match>
+        <Match when={true}>
+          <FileTree path="" onFileClick={(node) => openMobileFile(node.path)} />
+        </Match>
+      </Switch>
+    </div>
+  )
+
+  const mobileTerminalContent = () => (
+    <MobileEmpty
+      text={
+        view().terminal.opened()
+          ? language.t("session.mobile.terminal.open")
+          : language.t("session.mobile.terminal.closed")
+      }
+      label={view().terminal.opened() ? language.t("command.terminal.new") : language.t("command.terminal.toggle")}
+      action={() => {
+        if (!view().terminal.opened()) view().terminal.open()
+        else terminal.new()
+      }}
+    />
+  )
+
+  const SessionStatusStrip = () => {
+    const id = params.id
+    if (!id) return null
+
+    const active = busy(id)
+    return (
+      <div class="shrink-0 border-b border-border-weaker-base bg-background-stronger px-3 py-1.5">
+        <div class="flex min-w-0 items-center gap-2 text-12-regular text-text-weak">
+          <div
+            classList={{
+              "size-2 rounded-full shrink-0": true,
+              "bg-icon-success-base": !active,
+              "bg-icon-info-active": active,
+            }}
+          />
+          <span class="shrink-0 text-text-base">
+            {active ? language.t("session.status.working") : language.t("session.status.idle")}
+          </span>
+          <span class="text-border-strong-base" aria-hidden="true">
+            /
+          </span>
+          <span class="truncate">{local.agent.current()?.name ?? language.t("common.unknown")}</span>
+          <span class="text-border-strong-base" aria-hidden="true">
+            /
+          </span>
+          <span class="truncate">{local.model.current()?.name ?? language.t("dialog.model.select.title")}</span>
+          <span class="hidden sm:inline text-border-strong-base" aria-hidden="true">
+            /
+          </span>
+          <span class="hidden sm:inline shrink-0">
+            {language.t("session.status.changedFiles", { count: reviewCount() })}
+          </span>
+          <div class="hidden md:block">
+            <SessionContextUsage variant="indicator" />
+          </div>
+          <div class="flex-1" />
+          <Show when={active}>
+            <Button variant="ghost" size="small" icon="stop" onClick={() => void halt(id)} class="shrink-0">
+              {language.t("prompt.action.stop")}
+            </Button>
+          </Show>
+        </div>
+      </div>
+    )
+  }
+
   const revertMutation = useMutation(() => ({
     mutationFn: async (input: { sessionID: string; messageID: string }) => {
       const prev = prompt.current().slice()
@@ -1798,28 +1900,32 @@ export default function Page() {
       <SessionHeader />
       <div class="flex-1 min-h-0 flex flex-col md:flex-row">
         <Show when={!isDesktop() && !!params.id}>
-          <Tabs value={store.mobileTab} class="h-auto">
-            <Tabs.List>
-              <Tabs.Trigger
-                value="session"
-                class="!w-1/2 !max-w-none"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "session")}
-              >
-                {language.t("session.tab.session")}
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="changes"
-                class="!w-1/2 !max-w-none !border-r-0"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "changes")}
-              >
-                {hasReview()
-                  ? language.t("session.review.filesChanged", { count: reviewCount() })
-                  : language.t("session.review.change.other")}
-              </Tabs.Trigger>
-            </Tabs.List>
-          </Tabs>
+          <div
+            role="tablist"
+            aria-label={language.t("session.panel.reviewAndFiles")}
+            class="grid grid-cols-4 border-b border-border-weaker-base bg-background-stronger"
+          >
+            <For each={MOBILE_SESSION_TABS}>
+              {(tab) => {
+                const active = () => store.mobileTab === tab.id
+                return (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={active()}
+                    classList={{
+                      "min-w-0 border-r border-border-weaker-base px-2 py-2 text-12-medium last:border-r-0": true,
+                      "bg-surface-base-active text-text-strong": active(),
+                      "text-text-weak": !active(),
+                    }}
+                    onClick={() => setStore("mobileTab", tab.id)}
+                  >
+                    <span class="block truncate">{language.t(tab.label as Parameters<typeof language.t>[0])}</span>
+                  </button>
+                )
+              }}
+            </For>
+          </div>
         </Show>
 
         {/* Session panel */}
@@ -1833,50 +1939,59 @@ export default function Page() {
             width: sessionPanelWidth(),
           }}
         >
+          <Show when={params.id}>
+            <SessionStatusStrip />
+          </Show>
           <div class="flex-1 min-h-0 overflow-hidden">
             <Switch>
               <Match when={params.id}>
                 <Show when={messagesReady()}>
-                  <MessageTimeline
-                    mobileChanges={mobileChanges()}
-                    mobileFallback={reviewContent({
-                      diffStyle: "unified",
-                      classes: {
-                        root: "pb-8",
-                        header: "px-4",
-                        container: "px-4",
-                      },
-                      loadingClass: "px-4 py-4 text-text-weak",
-                      emptyClass: "h-full pb-64 -mt-4 flex flex-col items-center justify-center text-center gap-6",
-                    })}
-                    actions={actions}
-                    scroll={ui.scroll}
-                    onResumeScroll={resumeScroll}
-                    setScrollRef={setScrollRef}
-                    onScheduleScrollState={scheduleScrollState}
-                    onAutoScrollHandleScroll={autoScroll.handleScroll}
-                    onMarkScrollGesture={markScrollGesture}
-                    hasScrollGesture={hasScrollGesture}
-                    onUserScroll={markUserScroll}
-                    onTurnBackfillScroll={historyWindow.onScrollerScroll}
-                    onAutoScrollInteraction={autoScroll.handleInteraction}
-                    centered={centered()}
-                    setContentRef={(el) => {
-                      content = el
-                      autoScroll.contentRef(el)
+                  <Switch>
+                    <Match when={!isDesktop() && store.mobileTab === "files"}>{mobileFileContent()}</Match>
+                    <Match when={!isDesktop() && store.mobileTab === "terminal"}>{mobileTerminalContent()}</Match>
+                    <Match when={true}>
+                      <MessageTimeline
+                        mobileChanges={mobileChanges()}
+                        mobileFallback={reviewContent({
+                          diffStyle: "unified",
+                          classes: {
+                            root: "pb-8",
+                            header: "px-4",
+                            container: "px-4",
+                          },
+                          loadingClass: "px-4 py-4 text-text-weak",
+                          emptyClass: "h-full pb-64 -mt-4 flex flex-col items-center justify-center text-center gap-6",
+                        })}
+                        actions={actions}
+                        scroll={ui.scroll}
+                        onResumeScroll={resumeScroll}
+                        setScrollRef={setScrollRef}
+                        onScheduleScrollState={scheduleScrollState}
+                        onAutoScrollHandleScroll={autoScroll.handleScroll}
+                        onMarkScrollGesture={markScrollGesture}
+                        hasScrollGesture={hasScrollGesture}
+                        onUserScroll={markUserScroll}
+                        onTurnBackfillScroll={historyWindow.onScrollerScroll}
+                        onAutoScrollInteraction={autoScroll.handleInteraction}
+                        centered={centered()}
+                        setContentRef={(el) => {
+                          content = el
+                          autoScroll.contentRef(el)
 
-                      const root = scroller
-                      if (root) scheduleScrollState(root)
-                    }}
-                    turnStart={historyWindow.turnStart()}
-                    historyMore={historyMore()}
-                    historyLoading={historyLoading()}
-                    onLoadEarlier={() => {
-                      void historyWindow.loadAndReveal()
-                    }}
-                    renderedUserMessages={historyWindow.renderedUserMessages()}
-                    anchor={anchor}
-                  />
+                          const root = scroller
+                          if (root) scheduleScrollState(root)
+                        }}
+                        turnStart={historyWindow.turnStart()}
+                        historyMore={historyMore()}
+                        historyLoading={historyLoading()}
+                        onLoadEarlier={() => {
+                          void historyWindow.loadAndReveal()
+                        }}
+                        renderedUserMessages={historyWindow.renderedUserMessages()}
+                        anchor={anchor}
+                      />
+                    </Match>
+                  </Switch>
                 </Show>
               </Match>
               <Match when={true}>

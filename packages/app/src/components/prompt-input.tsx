@@ -1475,7 +1475,34 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                   {language.t("common.cancel")}
                 </Button>
               </div>
-              <div class="flex items-center gap-1.5 min-w-0 flex-1 h-7">
+              <div class="flex items-center gap-1.5 min-w-0 flex-1 h-auto min-h-7 flex-wrap sm:flex-nowrap">
+                <div
+                  class="flex h-7 shrink-0 items-center rounded-md bg-surface-base p-0.5"
+                  aria-label={language.t("prompt.mode.switcher")}
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="small"
+                    class="h-6 px-2 text-12-medium"
+                    classList={{ "bg-surface-base-active text-text-strong": store.mode === "normal" }}
+                    onClick={() => setMode("normal")}
+                    aria-pressed={store.mode === "normal"}
+                  >
+                    {language.t("prompt.mode.normal")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="small"
+                    class="h-6 px-2 text-12-medium"
+                    classList={{ "bg-surface-base-active text-text-strong": store.mode === "shell" }}
+                    onClick={() => setMode("shell")}
+                    aria-pressed={store.mode === "shell"}
+                  >
+                    {language.t("prompt.mode.shell")}
+                  </Button>
+                </div>
                 <Show when={!agentsLoading()}>
                   <div
                     data-component="prompt-agent-control"
@@ -1495,7 +1522,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           local.agent.set(value)
                           restoreFocus()
                         }}
-                        class="capitalize max-w-[160px] text-text-base"
+                        class="capitalize max-w-[120px] sm:max-w-[160px] text-text-base"
                         valueClass="truncate text-13-regular text-text-base"
                         triggerStyle={control()}
                         triggerProps={{ "data-action": "prompt-agent" }}
@@ -1524,7 +1551,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                               as="div"
                               variant="ghost"
                               size="normal"
-                              class="min-w-0 max-w-[320px] text-13-regular text-text-base group"
+                              class="min-w-0 max-w-[180px] sm:max-w-[320px] text-13-regular text-text-base group"
                               style={control()}
                               onClick={() => {
                                 void import("@/components/dialog-select-model-unpaid").then((x) => {
@@ -1560,7 +1587,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                               variant: "ghost",
                               size: "normal",
                               style: control(),
-                              class: "min-w-0 max-w-[320px] text-13-regular text-text-base group",
+                              class: "min-w-0 max-w-[180px] sm:max-w-[320px] text-13-regular text-text-base group",
                               "data-action": "prompt-model",
                             }}
                             onClose={restoreFocus}
@@ -1600,7 +1627,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                               local.model.variant.set(value === "default" ? undefined : value)
                               restoreFocus()
                             }}
-                            class="capitalize max-w-[160px] text-text-base"
+                            class="capitalize max-w-[120px] sm:max-w-[160px] text-text-base"
                             valueClass="truncate text-13-regular text-text-base"
                             triggerStyle={control()}
                             triggerProps={{ "data-action": "prompt-model-variant" }}
