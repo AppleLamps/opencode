@@ -112,6 +112,19 @@ This is used internally and can be invoked using `@general` in messages.
 
 Learn more about [agents](https://opencode.ai/docs/agents).
 
+### Provider Support
+
+OpenCode is provider-agnostic and includes internal tooling to keep provider support measurable as models change. The core package derives a capability matrix from configured provider metadata and records known provider quirks for tool calls, image and PDF input, reasoning, prompt caching, streaming, context limits, and cost.
+
+For local development:
+
+```bash
+bun run --cwd packages/opencode provider:matrix
+bun run --cwd packages/opencode provider:smoke -- --all-configured --json
+```
+
+`provider:matrix` prints the derived model capability matrix as JSON. `provider:smoke` runs opt-in live probes against configured providers and skips targets without credentials.
+
 ### Documentation
 
 For more info on how to configure OpenCode, [**head over to our docs**](https://opencode.ai/docs).
