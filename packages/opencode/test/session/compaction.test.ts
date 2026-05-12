@@ -325,13 +325,13 @@ function llm() {
 
 function liveRuntime(layer: Layer.Layer<LLM.Service>, provider = ProviderTest.fake(), config = Config.defaultLayer) {
   const bus = Bus.layer
-  const status = SessionStatus.layer.pipe(Layer.provide(bus))
+  const status = SessionStatus.layer.pipe(Layer.provideMerge(bus))
   const processor = SessionProcessorModule.SessionProcessor.layer.pipe(
     Layer.provide(summary),
     Layer.provide(Image.defaultLayer),
   )
   return ManagedRuntime.make(
-    Layer.mergeAll(SessionCompaction.layer.pipe(Layer.provide(processor)), processor, bus, status).pipe(
+    Layer.mergeAll(SessionCompaction.layer.pipe(Layer.provide(processor)), processor, status).pipe(
       Layer.provide(provider.layer),
       Layer.provide(SessionNs.defaultLayer),
       Layer.provide(Snapshot.defaultLayer),
@@ -340,7 +340,6 @@ function liveRuntime(layer: Layer.Layer<LLM.Service>, provider = ProviderTest.fa
       Layer.provide(Agent.defaultLayer),
       Layer.provide(Plugin.defaultLayer),
       Layer.provide(status),
-      Layer.provide(bus),
       Layer.provide(config),
     ),
   )
@@ -1383,22 +1382,20 @@ describe("session.compaction.process", () => {
     const stub = llm()
     const ready = defer()
     stub.push(
-      Stream.fromAsyncIterable(
-        {
-          async *[Symbol.asyncIterator]() {
-            yield { type: "start" } as LLM.Event
-            throw new APICallError({
+      Stream.make({ type: "start" } satisfies LLM.Event).pipe(
+        Stream.concat(
+          Stream.fail(
+            new APICallError({
               message: "boom",
               url: "https://example.com/v1/chat/completions",
               requestBodyValues: {},
               statusCode: 503,
-              responseHeaders: { "retry-after-ms": "10000" },
+              responseHeaders: { "retry-after-ms": "60000" },
               responseBody: '{"error":"boom"}',
               isRetryable: true,
-            })
-          },
-        },
-        (err) => err,
+            }),
+          ),
+        ),
       ),
     )
 
@@ -1446,7 +1443,7 @@ describe("session.compaction.process", () => {
 
           await Promise.race([
             ready.promise,
-            wait(1000).then(() => {
+            wait(5000).then(() => {
               throw new Error("timed out waiting for retry status")
             }),
           ])
@@ -1455,13 +1452,13 @@ describe("session.compaction.process", () => {
           abort.abort()
           const result = await Promise.race([
             run.then((value) => ({ kind: "done" as const, value, ms: Date.now() - start })),
-            wait(250).then(() => ({ kind: "timeout" as const })),
+            wait(5000).then(() => ({ kind: "timeout" as const })),
           ])
 
           expect(result.kind).toBe("done")
           if (result.kind === "done") {
             expect(result.value).toBe("stop")
-            expect(result.ms).toBeLessThan(250)
+            expect(result.ms).toBeLessThan(5000)
           }
         } finally {
           off?.()

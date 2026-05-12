@@ -6,6 +6,7 @@ import { streamText, wrapLanguageModel, type ModelMessage, type Tool, tool, json
 import { mergeDeep } from "remeda"
 import { GitLabWorkflowLanguageModel } from "gitlab-ai-provider"
 import { ProviderTransform } from "@/provider/transform"
+import { ProviderCapability } from "@/provider/capability"
 import { Config } from "@/config/config"
 import { InstanceState } from "@/effect/instance-state"
 import type { Agent } from "@/agent/agent"
@@ -194,23 +195,14 @@ const live: Layer.Layer<
 
       const tools = resolveTools(input)
 
-      // LiteLLM and some Anthropic proxies require the tools parameter to be present
-      // when message history contains tool calls, even if no tools are being used.
-      // Add a dummy tool that is never called to satisfy this validation.
-      // This is enabled for:
-      // 1. Providers with "litellm" in their ID or API ID (auto-detected)
-      // 2. Providers with explicit "litellmProxy: true" option (opt-in for custom gateways)
-      const isLiteLLMProxy =
-        item.options?.["litellmProxy"] === true ||
-        input.model.providerID.toLowerCase().includes("litellm") ||
-        input.model.api.id.toLowerCase().includes("litellm")
-
       // LiteLLM/Bedrock rejects requests where the message history contains tool
       // calls but no tools param is present. When there are no active tools (e.g.
       // during compaction), inject a stub tool to satisfy the validation requirement.
       // The stub description explicitly tells the model not to call it.
       if (
-        (isLiteLLMProxy || input.model.providerID.includes("github-copilot")) &&
+        ProviderCapability.requiresToolParameterWhenHistoryHasToolCalls(input.model, {
+          providerOptions: item.options,
+        }) &&
         Object.keys(tools).length === 0 &&
         hasToolCalls(input.messages)
       ) {

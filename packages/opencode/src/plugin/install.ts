@@ -344,7 +344,10 @@ function patchName(kind: Kind): "opencode" | "tui" {
 
 async function patchOne(dir: string, target: Target, spec: string, force: boolean, dep: PatchDeps): Promise<PatchOne> {
   const name = patchName(target.kind)
-  await using _ = await Flock.acquire(`plug-config:${Filesystem.resolve(path.join(dir, name))}`)
+  await using _ = await Flock.acquire(`plug-config:${Filesystem.resolve(path.join(dir, name))}`, {
+    baseDelayMs: 10,
+    maxDelayMs: 250,
+  })
 
   const files = dep.files(dir, name)
   let cfg = files[0]

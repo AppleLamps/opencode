@@ -194,10 +194,8 @@ describe("tool.read external_directory permission", () => {
 
         const { items, next } = asks()
         const target = path.join(dir, "test.txt")
-        const alt = target
-          .replace(/^[A-Za-z]:/, "")
-          .replaceAll("\\", "/")
-          .toLowerCase()
+        const slash = target.replaceAll("\\", "/")
+        const alt = `/${slash[0].toLowerCase()}${slash.slice(2)}`.toLowerCase()
 
         yield* exec(dir, { filePath: alt }, next)
         const read = items.find((item) => item.permission === "read")

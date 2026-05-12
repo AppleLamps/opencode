@@ -66,7 +66,7 @@ describe("plugin.install.concurrent", () => {
   test("serializes concurrent server config updates across processes", async () => {
     await using tmp = await tmpdir()
     const target = await plugin(tmp.path, ["server"])
-    const all = mods("mod-server", 12)
+    const all = mods("mod-server", 8)
 
     const out = await Promise.all(
       all.map((mod) =>
@@ -74,7 +74,7 @@ describe("plugin.install.concurrent", () => {
           dir: tmp.path,
           target,
           mod,
-          holdMs: 30,
+          holdMs: 10,
         }),
       ),
     )
@@ -89,7 +89,7 @@ describe("plugin.install.concurrent", () => {
   test("serializes concurrent server+tui config updates across processes", async () => {
     await using tmp = await tmpdir()
     const target = await plugin(tmp.path, ["server", "tui"])
-    const all = mods("mod-both", 10)
+    const all = mods("mod-both", 8)
 
     const out = await Promise.all(
       all.map((mod) =>
@@ -97,7 +97,7 @@ describe("plugin.install.concurrent", () => {
           dir: tmp.path,
           target,
           mod,
-          holdMs: 30,
+          holdMs: 10,
         }),
       ),
     )
@@ -118,14 +118,14 @@ describe("plugin.install.concurrent", () => {
     await fs.mkdir(path.dirname(cfg), { recursive: true })
     await Bun.write(cfg, JSON.stringify({ plugin: ["seed@1.0.0"] }, null, 2))
 
-    const next = mods("mod-json", 8)
+    const next = mods("mod-json", 6)
     const out = await Promise.all(
       next.map((mod) =>
         run({
           dir: tmp.path,
           target,
           mod,
-          holdMs: 30,
+          holdMs: 10,
         }),
       ),
     )

@@ -22,6 +22,10 @@ const baseCtx: Omit<Tool.Context, "ask"> = {
 
 const glob = (p: string) =>
   process.platform === "win32" ? Filesystem.normalizePathPattern(p) : p.replaceAll("\\", "/")
+const gitBashPath = (p: string) => {
+  const slash = p.replaceAll("\\", "/")
+  return `/${slash[0].toLowerCase()}${slash.slice(2)}`.toLowerCase()
+}
 
 function makeCtx() {
   const requests: Array<Omit<Permission.Request, "id" | "sessionID" | "tool">> = []
@@ -127,10 +131,7 @@ describe("tool.assertExternalDirectory", () => {
       await using tmp = await tmpdir({ git: true })
 
       const target = path.join(outerTmp.path, "outside.txt")
-      const alt = target
-        .replace(/^[A-Za-z]:/, "")
-        .replaceAll("\\", "/")
-        .toLowerCase()
+      const alt = gitBashPath(target)
 
       await WithInstance.provide({
         directory: tmp.path,

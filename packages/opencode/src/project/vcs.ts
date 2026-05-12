@@ -1,5 +1,7 @@
 import { Effect, Layer, Context, Schema, Stream, Scope } from "effect"
 import { formatPatch, structuredPatch } from "diff"
+import { readFile } from "fs/promises"
+import path from "path"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { InstanceState } from "@/effect/instance-state"
@@ -28,6 +30,7 @@ const merge = (...lists: Git.Item[][]) => {
 }
 
 const emptyBatch = () => ({ patches: new Map<string, string>(), capped: false })
+const escapeLoneCarriageReturns = (text: string) => text.replace(/\r(?!\n)/g, "\\r")
 
 const parseQuotedPath = (value: string) => {
   let out = ""
@@ -129,6 +132,27 @@ const nativePatch = Effect.fnUntraced(function* (
   return emptyPatch(item.file)
 })
 
+const readWorkingText = Effect.fnUntraced(function* (cwd: string, file: string) {
+  return yield* Effect.tryPromise(() => readFile(path.join(cwd, file), "utf8")).pipe(
+    Effect.catch(() => Effect.succeed("")),
+  )
+})
+
+const normalizePatch = Effect.fnUntraced(function* (
+  git: Git.Interface,
+  cwd: string,
+  ref: string | undefined,
+  item: Git.Item,
+  patch: string,
+) {
+  if (!patch.includes("\r")) return patch
+  const oldText = ref && item.code !== "??" ? yield* git.show(cwd, ref, item.file) : ""
+  const newText = item.status === "deleted" ? "" : yield* readWorkingText(cwd, item.file)
+  return escapeLoneCarriageReturns(
+    formatPatch(structuredPatch(item.file, item.file, oldText, newText, "", "", { context: PATCH_CONTEXT_LINES })),
+  )
+})
+
 const totalPatch = (file: string, patch: string, total: number) => {
   if (total + Buffer.byteLength(patch) <= MAX_TOTAL_PATCH_BYTES) return { patch, capped: false }
   log.warn("total patch budget exceeded", { file, max: MAX_TOTAL_PATCH_BYTES })
@@ -146,9 +170,9 @@ const patchForItem = Effect.fnUntraced(function* (
   if (capped) return emptyPatch(item.file)
 
   const batched = batch.patches.get(item.file)
-  if (batched !== undefined) return batched
+  if (batched !== undefined) return yield* normalizePatch(git, cwd, ref, item, batched)
   if (item.code !== "??" && batch.capped) return emptyPatch(item.file)
-  return yield* nativePatch(git, cwd, ref, item)
+  return yield* normalizePatch(git, cwd, ref, item, yield* nativePatch(git, cwd, ref, item))
 })
 
 const files = Effect.fnUntraced(function* (

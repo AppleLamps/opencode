@@ -29,6 +29,7 @@ async function withVcs(directory: string, body: () => Promise<void>) {
           const vcs = yield* Vcs.Service
           yield* watcher.init()
           yield* vcs.init()
+          yield* vcs.branch()
         }),
       )
       await Bun.sleep(500)
@@ -305,7 +306,7 @@ describe("Vcs diff", () => {
       )
       const file = diff.find((item) => item.file === "file.txt")
 
-      expect(file?.patch).toContain(" same\rdiff --git inside")
+      expect(file?.patch).toContain(" same\\rdiff --git inside")
       expect(file?.patch).toContain("-delete")
       expect(() => parsePatch(file?.patch ?? "")).not.toThrow()
     })

@@ -7,6 +7,13 @@ import { Pty } from "../../src/pty"
 import { tmpdir } from "../fixture/fixture"
 import { setTimeout as sleep } from "node:timers/promises"
 
+const echoCommand =
+  process.platform === "win32"
+    ? { command: process.env.COMSPEC ?? "cmd.exe" }
+    : { command: "cat" }
+const ptyNewline = process.platform === "win32" ? "\r\n" : "\n"
+const ptyEchoDelay = process.platform === "win32" ? 500 : 100
+
 describe("pty", () => {
   test("does not leak output when websocket objects are reused", async () => {
     await using dir = await tmpdir({ git: true })
@@ -17,8 +24,8 @@ describe("pty", () => {
         AppRuntime.runPromise(
           Effect.gen(function* () {
             const pty = yield* Pty.Service
-            const a = yield* pty.create({ command: "cat", title: "a" })
-            const b = yield* pty.create({ command: "cat", title: "b" })
+            const a = yield* pty.create({ ...echoCommand, title: "a" })
+            const b = yield* pty.create({ ...echoCommand, title: "b" })
             try {
               const outA: string[] = []
               const outB: string[] = []
@@ -45,8 +52,8 @@ describe("pty", () => {
               outA.length = 0
               outB.length = 0
 
-              yield* pty.write(a.id, "AAA\n")
-              yield* Effect.promise(() => sleep(100))
+              yield* pty.write(a.id, `AAA${ptyNewline}`)
+              yield* Effect.promise(() => sleep(ptyEchoDelay))
 
               expect(outB.join("")).not.toContain("AAA")
             } finally {
@@ -67,7 +74,7 @@ describe("pty", () => {
         AppRuntime.runPromise(
           Effect.gen(function* () {
             const pty = yield* Pty.Service
-            const a = yield* pty.create({ command: "cat", title: "a" })
+            const a = yield* pty.create({ ...echoCommand, title: "a" })
             try {
               const outA: string[] = []
               const outB: string[] = []
@@ -91,8 +98,8 @@ describe("pty", () => {
                 outB.push(typeof data === "string" ? data : Buffer.from(data as Uint8Array).toString("utf8"))
               }
 
-              yield* pty.write(a.id, "AAA\n")
-              yield* Effect.promise(() => sleep(100))
+              yield* pty.write(a.id, `AAA${ptyNewline}`)
+              yield* Effect.promise(() => sleep(ptyEchoDelay))
 
               expect(outB.join("")).not.toContain("AAA")
             } finally {
@@ -112,7 +119,7 @@ describe("pty", () => {
         AppRuntime.runPromise(
           Effect.gen(function* () {
             const pty = yield* Pty.Service
-            const a = yield* pty.create({ command: "cat", title: "a" })
+            const a = yield* pty.create({ ...echoCommand, title: "a" })
             try {
               const out: string[] = []
 
@@ -133,8 +140,8 @@ describe("pty", () => {
 
               ctx.connId = 2
 
-              yield* pty.write(a.id, "AAA\n")
-              yield* Effect.promise(() => sleep(100))
+              yield* pty.write(a.id, `AAA${ptyNewline}`)
+              yield* Effect.promise(() => sleep(ptyEchoDelay))
 
               expect(out.join("")).toContain("AAA")
             } finally {
